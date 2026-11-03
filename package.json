@@ -1,0 +1,55 @@
+{
+  "name": "ecommerce-backend-api",
+  "version": "1.0.0",
+  "description": "YoMobiles backend REST API for the client storefront and admin dashboard",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "production": "NODE_ENV=production node index.js",
+    "catalog:import": "node scripts/import_cktech_catalog.js",
+    "payment-proofs:cleanup": "node scripts/cleanup_payment_proofs.js",
+    "payment-proofs:audit": "node scripts/audit_legacy_payment_proofs.js",
+    "test": "node --test"
+  },
+  "author": "YoMobiles project maintainers",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kalaabalb/ecommerce-backend-api.git"
+  },
+  "homepage": "https://ecommerce-backend-api-jet.vercel.app",
+  "bugs": {
+    "url": "https://github.com/kalaabalb/ecommerce-backend-api/issues"
+  },
+  "keywords": [
+    "yomobiles",
+    "backend",
+    "express",
+    "mongodb",
+    "jwt",
+    "ecommerce"
+  ],
+  "dependencies": {
+    "axios": "^1.12.2",
+    "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.11.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.19.2",
+    "express-async-handler": "^1.2.0",
+    "express-rate-limit": "^8.2.1",
+    "ffprobe-static": "^3.1.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^8.3.2",
+    "multer": "^2.0.2",
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "supertest": "^7.2.2"
+  },
+  "overrides": {
+    "follow-redirects": "1.16.2"
+  }
+}
