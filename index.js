@@ -10,7 +10,7 @@ const cors = require("cors");
 const asyncHandler = require("express-async-handler");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const { createCorsOriginCallback } = require("./config/cors");
+const mountHttpSecurity = require("./config/httpSecurity");
 const { isProductionLike } = require("./config/environment");
 const { APP_VERSION } = require("./config/app");
 const logSafeError = require("./utils/logSafeError");
@@ -31,58 +31,10 @@ const app = express();
 // that hop instead of trusting the caller-controlled X-Forwarded-For header.
 app.set("trust proxy", 1);
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isProductionLike() ? 600 : 10000,
-  message: {
-    success: false,
-    message: "Too many requests from this IP, please try again later.",
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: (req) => {
-    if (req.path === "/health" || req.path === "/") {
-      return true;
-    }
-    if (!isProductionLike()) {
-      return true;
-    }
-    return false;
-  },
-});
-
-app.use(limiter);
-
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
-  message: {
-    success: false,
-    message: "Too many sign-in attempts. Please try again later.",
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: () => !isProductionLike(),
-});
-app.use(["/users/login", "/users/register", "/admin-users/login"], loginLimiter);
-
-// Development retains its local wildcard origins. Staging and production
-// require an explicit exact HTTPS allowlist and fail at startup if it is absent.
-app.use(
-  cors({
-    origin: createCorsOriginCallback(process.env),
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "Accept",
-      "Origin",
-      "Idempotency-Key",
-    ],
-  }),
-);
+// Development retains its existing origin behavior. Staging and production
+// require exact HTTPS origins; CORS also runs before request limits so browser
+// preflights and limited responses receive the appropriate CORS headers.
+mountHttpSecurity(app, { cors, rateLimit });
 
 // Security headers
 app.use(
