@@ -6,7 +6,8 @@ const rateLimit = require("express-rate-limit");
 const cloudinary = require("cloudinary").v2;
 const sharp = require("sharp");
 const axios = require("axios");
-const { pipeline } = require("node:stream");
+const { pipeline, Transform } = require("node:stream");
+const { enhanceProductPhoto, enhancementEnabled } = require("./utils/photoEnhance");
 const { isProductionLike } = require("./config/environment");
 
 function canonicalFuturePath(inputPath) {
@@ -557,6 +558,41 @@ const createFileFilter = () => (req, file, cb) => {
   );
 };
 
+/**
+ * Stream transformer used by every image upload. Product photos (options.enhance)
+ * are buffered and run through the free studio-style enhancement; if anything goes
+ * wrong we silently fall back to the plain resize so an upload never fails because
+ * of the cosmetic step.
+ */
+function makeImageTransformer(req, options = {}) {
+  const plain = () => sharp().rotate().resize(2400, 2400, {
+    fit: "inside",
+    withoutEnlargement: true,
+  }).webp({ quality: 82 });
+  if (!options.enhance || !enhancementEnabled(req)) return plain();
+
+  const chunks = [];
+  return new Transform({
+    transform(chunk, _encoding, done) {
+      chunks.push(chunk);
+      done();
+    },
+    flush(done) {
+      const original = Buffer.concat(chunks);
+      enhanceProductPhoto(original)
+        .then(({ buffer }) => buffer)
+        .catch(() => sharp(original).rotate().resize(2400, 2400, {
+          fit: "inside",
+          withoutEnlargement: true,
+        }).webp({ quality: 82 }).toBuffer())
+        .then((buffer) => done(null, buffer), (error) => {
+          error.statusCode = 400;
+          done(error);
+        });
+    },
+  });
+}
+
 const createStorage = (folder, getPublicId, options = {}) => ({
   _handleFile(req, file, callback) {
     try {
@@ -587,10 +623,7 @@ const createStorage = (folder, getPublicId, options = {}) => ({
             completed = true;
             callback(error, info);
           };
-          const transformer = sharp().rotate().resize(2400, 2400, {
-            fit: "inside",
-            withoutEnlargement: true,
-          }).webp({ quality: 82 });
+          const transformer = makeImageTransformer(req, options);
           const output = fs.createWriteStream(destination, {
             flags: "wx",
             ...(options.private ? { mode: 0o600 } : {}),
@@ -669,10 +702,7 @@ const createStorage = (folder, getPublicId, options = {}) => ({
         });
       },
     );
-    const transformer = sharp().rotate().resize(2400, 2400, {
-      fit: "inside",
-      withoutEnlargement: true,
-    }).webp({ quality: 82 });
+    const transformer = makeImageTransformer(req, options);
     const markInvalidImage = (error) => {
       if (!error.statusCode) error.statusCode = 400;
     };
@@ -753,7 +783,7 @@ const uploadProduct = multer({
   storage: createStorage("products", (req, file) => {
     const nameWithoutExt = path.basename(file.originalname, path.extname(file.originalname));
     return `product_${Date.now()}_${crypto.randomUUID()}_${nameWithoutExt}`;
-  }),
+  }, { enhance: true }),
   limits: { fileSize: maxUploadSize },
   fileFilter: createFileFilter(),
 });
