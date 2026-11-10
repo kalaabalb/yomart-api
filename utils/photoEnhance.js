@@ -21,8 +21,8 @@ const sharp = require("sharp");
 
 const OUTPUT_SIZE = 1600;
 const WORK_EDGE = 560; // analysis resolution for mask building
-const STUDIO_TOP = [250, 249, 246];
-const STUDIO_BOTTOM = [234, 232, 227];
+const STUDIO_TOP = [251, 253, 255]; // cool white — matches the storefront's blue-white palette
+const STUDIO_BOTTOM = [231, 238, 248];
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
