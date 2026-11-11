@@ -18,6 +18,7 @@ const { claimUploadedProof, isEligibleForProofReplacement } = require("../utils/
 process.env.JWT_SECRET ||= "order-policy-test-secret";
 const roles = Object.fromEntries(["moderator", "admin", "super_admin", "inactive"].map((role) => [role, new mongoose.Types.ObjectId()]));
 const oldFindById = AdminUser.findById;
+const oldStartSession = mongoose.startSession;
 function app() {
   const server = express();
   server.use(express.json());
@@ -29,13 +30,20 @@ function app() {
 }
 
 test.before(() => {
+  mongoose.startSession = async () => ({
+    withTransaction: async (operation) => operation(),
+    endSession: async () => {},
+  });
   AdminUser.findById = async (id) => {
     const role = Object.keys(roles).find((name) => roles[name].toString() === id.toString());
     if (!role || role === "inactive") return null;
     return { _id: roles[role], isActive: true, clearanceLevel: role };
   };
 });
-test.after(() => { AdminUser.findById = oldFindById; });
+test.after(() => {
+  AdminUser.findById = oldFindById;
+  mongoose.startSession = oldStartSession;
+});
 
 const token = (role) => `Bearer ${issueAdminToken({ _id: roles[role], clearanceLevel: role === "inactive" ? "admin" : role })}`;
 
@@ -79,7 +87,7 @@ test("admin and super-admin have the documented read and fulfillment capabilitie
   const query = () => ({ populate() { return this; }, sort: async () => [] });
   Order.find = query;
   Order.findByIdAndUpdate = async (_id, update) => ({ _id, ...update });
-  Order.findById = async () => ({ orderStatus: "processing", paymentMethod: "cod", async save() { return this; } });
+  Order.findById = () => ({ session: async () => ({ orderStatus: "processing", paymentMethod: "cod", async save() { return this; } }) });
   User.find = () => ({ select: async (selection) => { customerProjection = selection; return []; } });
   try {
     for (const role of ["admin", "super_admin"]) {

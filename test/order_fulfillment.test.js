@@ -13,12 +13,17 @@ process.env.JWT_SECRET ||= "synthetic-fulfillment-test-secret";
 const adminIds = Object.fromEntries(["admin", "super_admin", "moderator", "inactive"].map((role) => [role, new mongoose.Types.ObjectId()]));
 const oldAdminFind = AdminUser.findById;
 const oldOrderFind = Order.findById;
+const oldStartSession = mongoose.startSession;
 const app = express();
 app.use(express.json());
 app.use("/orders", require("../routes/order"));
 const auth = (role) => `Bearer ${issueAdminToken({ _id: adminIds[role], clearanceLevel: role === "inactive" ? "admin" : role })}`;
 
 test.before(() => {
+  mongoose.startSession = async () => ({
+    withTransaction: async (operation) => operation(),
+    endSession: async () => {},
+  });
   AdminUser.findById = async (id) => {
     const role = Object.keys(adminIds).find((key) => adminIds[key].toString() === id.toString());
     return !role || role === "inactive" ? null : { _id: id, isActive: true, clearanceLevel: role };
@@ -28,6 +33,7 @@ test.before(() => {
 test.after(() => {
   AdminUser.findById = oldAdminFind;
   Order.findById = oldOrderFind;
+  mongoose.startSession = oldStartSession;
 });
 
 test("collection statuses are additive and preserve historical statuses", () => {
@@ -55,7 +61,7 @@ test("authorized admin records collection point and marks order ready", async ()
     paymentMethod: "cod",
     async save() { saved = true; return this; },
   };
-  Order.findById = async () => order;
+  Order.findById = () => ({ session: async () => order });
   const response = await request(app).put(`/orders/${new mongoose.Types.ObjectId()}`)
     .set("Authorization", auth("admin"))
     .send({
@@ -72,7 +78,7 @@ test("authorized admin records collection point and marks order ready", async ()
 test("ready status requires a collection point and collected cannot skip readiness", async () => {
   let saves = 0;
   const order = { orderStatus: "processing", paymentMethod: "cod", async save() { saves += 1; } };
-  Order.findById = async () => order;
+  Order.findById = () => ({ session: async () => order });
   const ready = await request(app).put(`/orders/${new mongoose.Types.ObjectId()}`)
     .set("Authorization", auth("admin")).send({ orderStatus: "ready_for_collection" });
   assert.equal(ready.statusCode, 400);
@@ -85,7 +91,7 @@ test("ready status requires a collection point and collected cannot skip readine
 
 test("moderators and inactive admins cannot change collection point or status", async () => {
   let reads = 0;
-  Order.findById = async () => { reads += 1; return { orderStatus: "processing", paymentMethod: "cod" }; };
+  Order.findById = () => ({ session: async () => { reads += 1; return { orderStatus: "processing", paymentMethod: "cod" }; } });
   for (const role of ["moderator", "inactive"]) {
     const response = await request(app).put(`/orders/${new mongoose.Types.ObjectId()}`)
       .set("Authorization", auth(role))

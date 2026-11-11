@@ -3,9 +3,11 @@ const sendRouteError = require("../utils/sendRouteError");
 const asyncHandler = require("express-async-handler");
 const mongoose = require("mongoose");
 const Order = require("../model/order");
+const Product = require("../model/product");
 const PaymentProof = require("../model/paymentProof");
 const SecurityAudit = require("../model/securityAudit");
 const { isProofRequired } = require("../utils/paymentMethods");
+const { releaseInventoryReservation } = require("../utils/inventoryReservation");
 const { privateProofLocation, deliverPrivatePaymentProof, deliverLegacyPaymentProof, savePrivatePaymentProof, deletePrivatePaymentProof } = require("../uploadFile");
 const router = express.Router();
 const { uploadPaymentProof, uploadLimiter } = require("../uploadFile");
@@ -191,6 +193,9 @@ router.post(
           if (updatedOrder.paymentStatus !== "pending" || ["cancelled", "delivered", "ready_for_collection", "collected"].includes(updatedOrder.orderStatus)) { const error = new Error("This order is no longer eligible for payment review."); error.statusCode = 409; throw error; }
           updatedOrder.paymentStatus = verified ? "verified" : "failed";
           updatedOrder.orderStatus = verified ? "processing" : "cancelled";
+          if (!verified) {
+            await releaseInventoryReservation(updatedOrder, { Product, session, reason: "payment_rejected" });
+          }
           if (proofAvailable) {
             updatedOrder.paymentProof.verified = verified;
             updatedOrder.paymentProof.verifiedAt = verified ? new Date() : null;

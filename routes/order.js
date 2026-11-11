@@ -22,6 +22,7 @@ const {
 const { privateProofLocation } = require("../uploadFile");
 const { ORDER_STATUSES, normalizeCollectionPoint, canTransitionOrderStatus } = require("../utils/orderFulfillment");
 const { paymentMethodSnapshot, isProofRequired, isCashCollection } = require("../utils/paymentMethods");
+const { releaseInventoryReservation, consumeInventoryReservation } = require("../utils/inventoryReservation");
 const {
   requireAdminAuth,
   requireUserAuth,
@@ -378,6 +379,11 @@ router.post(
           paymentMethod,
           paymentMethodSnapshot: currentMethodSnapshot,
           paymentStatus: "pending",
+          inventoryReservation: {
+            state: "reserved",
+            items: trustedItems.map((item) => ({ productID: item.productID, quantity: item.quantity })),
+            reservedAt: new Date(),
+          },
           ...(currentMethodSnapshot.requiresProof
             ? { paymentProof: { storageKey: proofRecord.storageKey, proofRecordId: proofRecord._id, uploadedAt: new Date(), verified: false } }
             : {}),
@@ -475,41 +481,69 @@ router.put(
         }
       }
 
-      const updatedOrder = await Order.findById(orderID);
-      if (!updatedOrder) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Order not found." });
-      }
-
-      if (!canTransitionOrderStatus(updatedOrder.orderStatus, orderStatus)) {
-        return res.status(409).json({ success: false, message: "This order status transition is not allowed." });
-      }
-      if (["shipped", "ready_for_collection", "collected"].includes(orderStatus) &&
-          !isCashCollection(updatedOrder) && updatedOrder.paymentStatus !== "verified") {
-        return res.status(409).json({ success: false, message: "Payment must be verified before fulfillment." });
-      }
-      if (requestedCollectionPoint !== undefined) {
-        if (requestedCollectionPoint === null) {
-          if (["ready_for_collection", "collected"].includes(orderStatus)) {
-            return res.status(400).json({ success: false, message: "A collection point is required for this status." });
+      const session = await mongoose.startSession();
+      let updatedOrder;
+      try {
+        await session.withTransaction(async () => {
+          updatedOrder = await Order.findById(orderID).session(session);
+          if (!updatedOrder) {
+            const error = new Error("Order not found.");
+            error.statusCode = 404;
+            throw error;
           }
-          updatedOrder.collectionPoint = undefined;
-        } else {
-          const point = normalizeCollectionPoint(requestedCollectionPoint);
-          if (!point) return res.status(400).json({ success: false, message: "Collection point name, address, and city are required." });
-          updatedOrder.collectionPoint = { ...point, agreedAt: new Date() };
-        }
+
+          if (!canTransitionOrderStatus(updatedOrder.orderStatus, orderStatus)) {
+            const error = new Error("This order status transition is not allowed.");
+            error.statusCode = 409;
+            throw error;
+          }
+          if (["shipped", "ready_for_collection", "collected"].includes(orderStatus) &&
+              !isCashCollection(updatedOrder) && updatedOrder.paymentStatus !== "verified") {
+            const error = new Error("Payment must be verified before fulfillment.");
+            error.statusCode = 409;
+            throw error;
+          }
+          if (requestedCollectionPoint !== undefined) {
+            if (requestedCollectionPoint === null) {
+              if (["ready_for_collection", "collected"].includes(orderStatus)) {
+                const error = new Error("A collection point is required for this status.");
+                error.statusCode = 400;
+                throw error;
+              }
+              updatedOrder.collectionPoint = undefined;
+            } else {
+              const point = normalizeCollectionPoint(requestedCollectionPoint);
+              if (!point) {
+                const error = new Error("Collection point name, address, and city are required.");
+                error.statusCode = 400;
+                throw error;
+              }
+              updatedOrder.collectionPoint = { ...point, agreedAt: new Date() };
+            }
+          }
+          if (["ready_for_collection", "collected"].includes(orderStatus) && !normalizeCollectionPoint(updatedOrder.collectionPoint)) {
+            const error = new Error("Record the agreed collection point before using a collection status.");
+            error.statusCode = 400;
+            throw error;
+          }
+          if (orderStatus === "collected" && !["ready_for_collection", "collected"].includes(updatedOrder.orderStatus)) {
+            const error = new Error("Only an order ready for collection can be marked collected.");
+            error.statusCode = 409;
+            throw error;
+          }
+
+          if (orderStatus === "cancelled") {
+            await releaseInventoryReservation(updatedOrder, { Product, session, reason: "cancelled" });
+          } else if (["collected", "delivered"].includes(orderStatus)) {
+            consumeInventoryReservation(updatedOrder);
+          }
+          updatedOrder.orderStatus = orderStatus;
+          if (trackingUrl !== undefined) updatedOrder.trackingUrl = normalizedTrackingUrl.slice(0, 500);
+          await updatedOrder.save({ session });
+        });
+      } finally {
+        await session.endSession();
       }
-      if (["ready_for_collection", "collected"].includes(orderStatus) && !normalizeCollectionPoint(updatedOrder.collectionPoint)) {
-        return res.status(400).json({ success: false, message: "Record the agreed collection point before using a collection status." });
-      }
-      if (orderStatus === "collected" && !["ready_for_collection", "collected"].includes(updatedOrder.orderStatus)) {
-        return res.status(409).json({ success: false, message: "Only an order ready for collection can be marked collected." });
-      }
-      updatedOrder.orderStatus = orderStatus;
-      if (trackingUrl !== undefined) updatedOrder.trackingUrl = normalizedTrackingUrl.slice(0, 500);
-      await updatedOrder.save();
 
       res.json({
         success: true,
@@ -553,6 +587,9 @@ router.put(
           if (order.paymentStatus !== "pending" || ["cancelled", "delivered", "ready_for_collection", "collected"].includes(order.orderStatus)) { const error = new Error("This order is no longer eligible for payment review."); error.statusCode = 409; throw error; }
           order.paymentStatus = verified ? "verified" : "failed";
           order.orderStatus = verified ? "processing" : "cancelled";
+          if (!verified) {
+            await releaseInventoryReservation(order, { Product, session, reason: "payment_rejected" });
+          }
           if (proofAvailable) {
             order.paymentProof.verified = verified;
             order.paymentProof.verifiedAt = verified ? new Date() : null;

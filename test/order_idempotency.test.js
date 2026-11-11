@@ -143,6 +143,10 @@ test("duplicate retry returns the first order and decrements stock exactly once"
   assert.equal(retry.body.data._id.toString(), first.body.data._id.toString());
   assert.equal(harness.orders.size, 1);
   assert.equal(harness.products.get(harness.productId.toString()).quantity, 3);
+  assert.equal(first.body.data.inventoryReservation.state, "reserved");
+  assert.equal(first.body.data.inventoryReservation.items[0].productID.toString(), harness.productId.toString());
+  assert.equal(first.body.data.inventoryReservation.items[0].quantity, 2);
+  assert.equal(retry.body.data.inventoryReservation.state, "reserved");
   assert.equal(first.body.data.orderTotal.delivery, 0);
   assert.equal(first.body.data.orderTotal.total, 180);
 });

@@ -52,6 +52,22 @@ const orderSchema = new mongoose.Schema(
         },
       },
     ],
+    // Additive reservation evidence for orders created after this feature.
+    // Historical orders without this marker are intentionally left unknown.
+    inventoryReservation: {
+      state: {
+        type: String,
+        enum: ["reserved", "released", "consumed"],
+      },
+      items: [{
+        productID: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },
+        quantity: { type: Number, required: true, min: 1 },
+      }],
+      reservedAt: Date,
+      releasedAt: Date,
+      releaseReason: { type: String, enum: ["cancelled", "payment_rejected"] },
+      consumedAt: Date,
+    },
     totalPrice: {
       type: Number,
       required: true,
