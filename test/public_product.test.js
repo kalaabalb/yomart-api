@@ -9,6 +9,9 @@ test("public preview products omit synthetic prices and stock", () => {
     price: 12345,
     offerPrice: 11000,
     quantity: 5,
+    catalogSource: { note: "synthetic review data" },
+    isSearchVerified: false,
+    createdBy: null,
     toObject() {
       return { ...this, toObject: undefined };
     },
@@ -18,6 +21,9 @@ test("public preview products omit synthetic prices and stock", () => {
   assert.equal("price" in result, false);
   assert.equal("offerPrice" in result, false);
   assert.equal("quantity" in result, false);
+  assert.equal("catalogSource" in result, false);
+  assert.equal("isSearchVerified" in result, false);
+  assert.equal("createdBy" in result, false);
 });
 
 test("public preview product sanitizer does not mutate its input", () => {
