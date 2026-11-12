@@ -55,14 +55,14 @@ jobs:
             throw new Error(`Production catalog check failed: HTTP ${catalogResponse.status}`);
           }
           for (const product of catalog.data) {
-            for (const field of ['price', 'offerPrice', 'quantity']) {
+            for (const field of ['price', 'offerPrice', 'quantity', 'catalogSource', 'isSearchVerified', 'createdBy']) {
               if (Object.hasOwn(product, field)) throw new Error(`Public preview catalog leaked ${field} for product ${product._id}`);
             }
           }
           const detailResponse = await fetch(`${api}/products/${catalog.data[0]._id}`, { headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' } });
           const detail = await detailResponse.json();
           if (!detailResponse.ok || !detail.data) throw new Error('Production product detail check failed');
-          for (const field of ['price', 'offerPrice', 'quantity']) {
+          for (const field of ['price', 'offerPrice', 'quantity', 'catalogSource', 'isSearchVerified', 'createdBy']) {
             if (Object.hasOwn(detail.data, field)) throw new Error(`Public product detail leaked ${field}`);
           }
           console.log('Public preview catalog PASS', catalog.data.length, 'products; synthetic prices and stock omitted');
