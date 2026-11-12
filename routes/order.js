@@ -23,6 +23,7 @@ const { privateProofLocation } = require("../uploadFile");
 const { ORDER_STATUSES, normalizeCollectionPoint, canTransitionOrderStatus } = require("../utils/orderFulfillment");
 const { paymentMethodSnapshot, isProofRequired, isCashCollection } = require("../utils/paymentMethods");
 const { releaseInventoryReservation, consumeInventoryReservation } = require("../utils/inventoryReservation");
+const { areSalesEnabled } = require("../config/salesAvailability");
 const {
   requireAdminAuth,
   requireUserAuth,
@@ -139,6 +140,16 @@ router.post(
   "/",
   requireUserAuth,
   asyncHandler(async (req, res) => {
+    // Production checkout remains closed until the owner approves real prices
+    // and available stock. Browsing and account access remain available.
+    if (!areSalesEnabled()) {
+      return res.status(503).json({
+        success: false,
+        code: "SALES_TEMPORARILY_UNAVAILABLE",
+        message: "Ordering is temporarily unavailable while product prices and availability are being confirmed.",
+      });
+    }
+
     const { userID, items, shippingAddress, paymentMethod, paymentProof } = req.body;
     const idempotencyKey = normalizeIdempotencyKey(req.get("Idempotency-Key"));
 
