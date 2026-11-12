@@ -7,12 +7,11 @@ Express/MongoDB REST API for the YoMart Flutter customer app, React storefront a
 - API: https://yomart-api.onrender.com
 - Runtime: `NODE_ENV=production`, `PLATFORM=Production`.
 - Database: existing MongoDB Atlas Free cluster `yomart-staging`, database `yomart_staging` (historical names; now the active production data store).
-- Latest production deployment: Render `dep-dbqscvjm8hqs73eo6p50` went live at 14:01:49 UTC on 12 November. Startup logs confirmed `Environment: production` and `Connected to MongoDB`.
-- `YOMART_SALES_ENABLED=false` is explicitly set in Render and redeployed. New order creation remains fail-closed until the owner approves actual prices and available stock.
-- Latest previously verified live health: HTTP 200, `success:true`, production, database connected, Cloudinary image storage and authenticated private payment-proof storage, version `1.0.4`.
-- Exact CORS preflight: HTTP 204 for `https://yomart.onrender.com` and `https://yomart-admin.onrender.com`.
-- Backend CI and live production smoke: [run 43228287511](https://github.com/kalaabalb/yomart-api/actions/runs/43228287511). This run preceded the explicit sales-flag redeploy; the new API README commit triggers another CI/smoke run.
-- Test suite: 253 tests, 251 passed, 0 failed, 2 optional tests skipped (verified in run 43228287511).
+- Production deployment `dep-dbqscvjm8hqs73eo6p50` went live at 14:01:49 UTC on 12 November. Startup logs confirmed `Environment: production` and `Connected to MongoDB`.
+- `YOMART_SALES_ENABLED=false` is explicitly set in Render. New order creation remains fail-closed until the owner approves actual prices and available stock.
+- Latest live health, catalog, checkout-settings and CORS verification: [Backend CI run 43233076575](https://github.com/kalaabalb/yomart-api/actions/runs/43233076575) passed after the explicit sales-flag deployment. Health returned HTTP 200 with production, database connected, Cloudinary image storage and authenticated private payment-proof storage, version `1.0.4`.
+- The same live smoke verified 8 public products with illustrative prices/stock omitted, cash-at-shop-or-handover as the only checkout method, no proof requirement, zero delivery fee, and exact HTTP 204 CORS preflights for the storefront and admin.
+- Test suite: 253 tests, 251 passed, 0 failed, 2 optional tests skipped (run 43233076575).
 - No paid Atlas resource was created; no existing database was deleted.
 
 ## Production safety boundary
