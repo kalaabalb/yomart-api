@@ -15,9 +15,9 @@ Express/MongoDB REST API for the YoMart Flutter customer app, React storefront a
 
 ## Production safety boundary
 
-Production checkout is explicitly disabled with `YOMART_SALES_ENABLED=false` until the owner approves real prices and available stock. The order route fails closed. Public `GET /products` and `GET /products/:id` responses omit `price`, `offerPrice` and `quantity` while sales are disabled; authenticated admin product responses retain those fields. Live CI verifies both public routes do not leak illustrative prices/stock.
+Production checkout is explicitly disabled with `YOMART_SALES_ENABLED=false` until the owner approves real prices and available stock. The order route fails closed. Public `GET /products` and `GET /products/:id` responses omit `price`, `offerPrice`, `quantity`, `catalogSource` and `createdBy` while sales are disabled; authenticated admin product responses retain those fields. Live CI verifies both public routes do not leak illustrative prices/stock.
 
-The active database currently contains 8 active synthetic catalogue products, 2 inactive historical fixtures, 4 categories, 4 subcategories, 2 brands, 2 collections and 2 posters. It contains zero orders and zero payment-proof records. No synthetic customer/order/receipt records were created. The one enabled payment method is **Cash at shop or handover**; no online gateway or bank/wallet payment method is configured.
+The active database currently contains 8 active synthetic catalogue products, 2 inactive historical fixtures, 4 categories, 4 subcategories, 2 brands, 2 collections and 2 posters. It contains zero orders and zero payment-proof records. No synthetic customer/order/receipt records were created. The one enabled payment method is **Cash at shop or handover**; live public checkout settings verify proof is not required and delivery fee is zero. No online gateway or bank/wallet payment method is configured.
 
 ## Stack and architecture
 
