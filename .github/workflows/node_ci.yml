@@ -25,3 +25,43 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  production-smoke:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify production API health and browser CORS
+        env:
+          API_ORIGIN: https://yomart-api.onrender.com
+          STOREFRONT_ORIGIN: https://yomart.onrender.com
+          ADMIN_ORIGIN: https://yomart-admin.onrender.com
+        run: |
+          node --input-type=module <<'NODE'
+          const api = process.env.API_ORIGIN;
+          const response = await fetch(`${api}/health`, { headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' } });
+          const payload = await response.json();
+          if (!response.ok || payload.success !== true ||
+              payload.data?.environment !== 'production' ||
+              payload.data?.database !== 'connected' ||
+              payload.data?.imageStorage !== 'cloudinary' ||
+              payload.data?.privatePaymentProofStorage !== 'cloudinary-authenticated') {
+            throw new Error(`Production health check failed: HTTP ${response.status}; ${JSON.stringify(payload)}`);
+          }
+          console.log('Production health PASS', JSON.stringify(payload.data));
+          for (const origin of [process.env.STOREFRONT_ORIGIN, process.env.ADMIN_ORIGIN]) {
+            const preflight = await fetch(`${api}/users/login`, {
+              method: 'OPTIONS',
+              headers: {
+                Origin: origin,
+                'Access-Control-Request-Method': 'POST',
+                'Access-Control-Request-Headers': 'authorization,content-type',
+              },
+            });
+            const allowed = preflight.headers.get('access-control-allow-origin');
+            if (preflight.status !== 204 || allowed !== origin) {
+              throw new Error(`CORS preflight failed for ${origin}: HTTP ${preflight.status}, allow-origin=${allowed}`);
+            }
+            console.log('CORS preflight PASS', origin);
+          }
+          NODE
