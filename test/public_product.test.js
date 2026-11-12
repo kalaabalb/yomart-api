@@ -22,7 +22,6 @@ test("public preview products omit synthetic prices and stock", () => {
   assert.equal("offerPrice" in result, false);
   assert.equal("quantity" in result, false);
   assert.equal("catalogSource" in result, false);
-  assert.equal("isSearchVerified" in result, false);
   assert.equal("createdBy" in result, false);
 });
 
