@@ -9,8 +9,8 @@ Express/MongoDB REST API for the YoMart Flutter customer app, React storefront a
 - Database: existing MongoDB Atlas Free cluster `yomart-staging`, database `yomart_staging` (historical names; now the active production data store).
 - Live health: HTTP 200, `success:true`, production, database connected, Cloudinary image storage and authenticated private payment-proof storage, version `1.0.4`.
 - Exact CORS preflight: HTTP 204 for `https://yomart.onrender.com` and `https://yomart-admin.onrender.com`.
-- Latest backend CI and live production smoke: [run 43224830159](https://github.com/kalaabalb/yomart-api/actions/runs/43224830159).
-- Test suite: 253 tests, 251 passed, 0 failed, 2 optional tests skipped.
+- Latest backend CI and live production smoke: [run 43226507608](https://github.com/kalaabalb/yomart-api/actions/runs/43226507608).
+- Test suite: 253 tests, 251 passed, 0 failed, 2 optional tests skipped (verified in run 43226507608).
 - No paid Atlas resource was created; no existing database was deleted.
 
 ## Production safety boundary
