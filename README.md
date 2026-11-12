@@ -7,15 +7,17 @@ Express/MongoDB REST API for the YoMart Flutter customer app, React storefront a
 - API: https://yomart-api.onrender.com
 - Runtime: `NODE_ENV=production`, `PLATFORM=Production`.
 - Database: existing MongoDB Atlas Free cluster `yomart-staging`, database `yomart_staging` (historical names; now the active production data store).
-- Live health: HTTP 200, `success:true`, production, database connected, Cloudinary image storage and authenticated private payment-proof storage, version `1.0.4`.
+- Latest production deployment: Render `dep-dbqscvjm8hqs73eo6p50` went live at 14:01:49 UTC on 12 November. Startup logs confirmed `Environment: production` and `Connected to MongoDB`.
+- `YOMART_SALES_ENABLED=false` is explicitly set in Render and redeployed. New order creation remains fail-closed until the owner approves actual prices and available stock.
+- Latest previously verified live health: HTTP 200, `success:true`, production, database connected, Cloudinary image storage and authenticated private payment-proof storage, version `1.0.4`.
 - Exact CORS preflight: HTTP 204 for `https://yomart.onrender.com` and `https://yomart-admin.onrender.com`.
-- Latest backend CI and live production smoke: [run 43226507608](https://github.com/kalaabalb/yomart-api/actions/runs/43226507608).
-- Test suite: 253 tests, 251 passed, 0 failed, 2 optional tests skipped (verified in run 43226507608).
+- Backend CI and live production smoke: [run 43228287511](https://github.com/kalaabalb/yomart-api/actions/runs/43228287511). This run preceded the explicit sales-flag redeploy; the new API README commit triggers another CI/smoke run.
+- Test suite: 253 tests, 251 passed, 0 failed, 2 optional tests skipped (verified in run 43228287511).
 - No paid Atlas resource was created; no existing database was deleted.
 
 ## Production safety boundary
 
-Production checkout is explicitly disabled with `YOMART_SALES_ENABLED=false` until the owner approves real prices and available stock. The order route fails closed. Public `GET /products` and `GET /products/:id` responses omit `price`, `offerPrice`, `quantity`, `catalogSource` and `createdBy` while sales are disabled; authenticated admin product responses retain those fields. Live CI verifies both public routes do not leak illustrative prices/stock.
+Public `GET /products` and `GET /products/:id` responses omit `price`, `offerPrice`, `quantity`, `catalogSource` and `createdBy` while sales are disabled; authenticated admin product responses retain those fields. Live CI verifies both public routes do not leak illustrative prices/stock.
 
 The active database currently contains 8 active synthetic catalogue products, 2 inactive historical fixtures, 4 categories, 4 subcategories, 2 brands, 2 collections and 2 posters. It contains zero orders and zero payment-proof records. No synthetic customer/order/receipt records were created. The one enabled payment method is **Cash at shop or handover**; live public checkout settings verify proof is not required and delivery fee is zero. No online gateway or bank/wallet payment method is configured.
 
@@ -36,7 +38,7 @@ npm start
 npm test
 ```
 
-Production/staging sales are opt-in. Set `YOMART_SALES_ENABLED=false` until real product prices/stock are approved. Do not commit secrets or live credentials.
+Production/staging sales are opt-in. Keep `YOMART_SALES_ENABLED=false` until real product prices/stock are approved. Do not commit secrets or live credentials.
 
 ## Security and business behavior
 
