@@ -67,7 +67,6 @@ jobs:
           }
           console.log('Public preview catalog PASS', catalog.data.length, 'products; synthetic prices and stock omitted');
           for (const origin of [process.env.STOREFRONT_ORIGIN, process.env.ADMIN_ORIGIN]) {
- of [process.env.STOREFRONT_ORIGIN, process.env.ADMIN_ORIGIN]) {
             const preflight = await fetch(`${api}/users/login`, {
               method: 'OPTIONS',
               headers: {
