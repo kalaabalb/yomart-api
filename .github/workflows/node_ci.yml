@@ -66,6 +66,19 @@ jobs:
             if (Object.hasOwn(detail.data, field)) throw new Error(`Public product detail leaked ${field}`);
           }
           console.log('Public preview catalog PASS', catalog.data.length, 'products; synthetic prices and stock omitted');
+          const checkoutSettingsResponse = await fetch(`${api}/store-settings/checkout`, { headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' } });
+          const checkoutSettings = await checkoutSettingsResponse.json();
+          const methods = checkoutSettings.data?.paymentMethods || [];
+          if (!checkoutSettingsResponse.ok || checkoutSettings.data?.deliveryFee !== 0 || methods.length !== 1) {
+            throw new Error('Public checkout configuration must expose one cash method and zero delivery fee');
+          }
+          const cashMethod = methods[0];
+          if (cashMethod.category !== 'cash_collection' || cashMethod.requiresProof !== false ||
+              cashMethod.name !== 'Cash at shop or handover' ||
+              !String(cashMethod.description || '').includes('YoMart staff')) {
+            throw new Error('Public cash-at-shop/handover payment configuration is incorrect');
+          }
+          console.log('Public checkout settings PASS: cash at shop or handover; proof not required; delivery fee 0');
           for (const origin of [process.env.STOREFRONT_ORIGIN, process.env.ADMIN_ORIGIN]) {
             const preflight = await fetch(`${api}/users/login`, {
               method: 'OPTIONS',
