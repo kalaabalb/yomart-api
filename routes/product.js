@@ -5,6 +5,8 @@ const logSafeError = require("../utils/logSafeError");
 const multer = require("multer");
 const { uploadProduct, uploadLimiter, deleteUploadedImage } = require("../uploadFile");
 const asyncHandler = require("express-async-handler");
+const { areSalesEnabled } = require("../config/salesAvailability");
+const { stripUnapprovedRetailData } = require("../utils/publicProduct");
 const {
   buildOwnedQuery,
   canAccessOwnedDocument,
@@ -27,6 +29,7 @@ router.get(
   asyncHandler(async (req, res) => {
     try {
       const { search, category, inStock } = req.query;
+      const salesEnabled = areSalesEnabled();
 
       let filter = req.adminUser
         ? buildOwnedQuery(req, {})
@@ -43,10 +46,12 @@ router.get(
       }
 
       // Stock filter
-      if (inStock === "true") {
-        filter.quantity = { $gt: 0 };
-      } else if (inStock === "false") {
-        filter.quantity = { $lte: 0 };
+      if (req.adminUser || salesEnabled) {
+        if (inStock === "true") {
+          filter.quantity = { $gt: 0 };
+        } else if (inStock === "false") {
+          filter.quantity = { $lte: 0 };
+        }
       }
 
       const products = await Product.find(filter)
@@ -58,11 +63,14 @@ router.get(
         .populate("createdBy", "id name username")
         .sort({ sortOrder: 1, createdAt: -1 });
 
+      const publicProducts = !req.adminUser && !salesEnabled
+        ? products.map(stripUnapprovedRetailData)
+        : products;
       res.json({
         success: true,
         message: "Products retrieved successfully.",
-        data: products,
-        count: products.length,
+        data: publicProducts,
+        count: publicProducts.length,
       });
     } catch (error) {
       logSafeError("Error fetching products:", error);
@@ -118,10 +126,13 @@ router.get(
         });
       }
 
+      const publicProduct = !req.adminUser && !areSalesEnabled()
+        ? stripUnapprovedRetailData(product)
+        : product;
       res.json({
         success: true,
         message: "Product details retrieved successfully.",
-        data: product,
+        data: publicProduct,
       });
     } catch (error) {
       logSafeError("Error fetching product:", error);
