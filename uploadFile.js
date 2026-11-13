@@ -517,6 +517,91 @@ async function deletePrivatePaymentProof(proofId) {
   }
 }
 
+function profileImageLocation(reference, ownerId) {
+  if (typeof reference !== "string" || !reference.startsWith("profile:")) return null;
+  const key = reference.slice("profile:".length);
+  const owner = String(ownerId || "");
+  if (!/^[a-f\d]{24}$/i.test(owner)) return null;
+  const match = key.match(new RegExp(`^profile-images/${owner}/(profile_[a-f\\d-]{36})(?:\\.webp)?$`, "i"));
+  if (!match) return null;
+  return { key, publicId: key.replace(/\\.webp$/i, ""), filename: `${match[1]}.webp` };
+}
+
+async function savePrivateProfileImage(buffer, ownerId) {
+  ensurePrivateProofStorageConfigured();
+  const owner = String(ownerId || "");
+  if (!/^[a-f\d]{24}$/i.test(owner) || !Buffer.isBuffer(buffer) || !buffer.length) {
+    throw Object.assign(new Error("A valid profile image is required."), { statusCode: 400 });
+  }
+  let optimized;
+  try {
+    optimized = await sharp(buffer).rotate().resize(1200, 1200, {
+      fit: "inside", withoutEnlargement: true,
+    }).webp({ quality: 82 }).toBuffer();
+  } catch (_) {
+    throw Object.assign(new Error("Choose a valid JPG, PNG, or WebP image."), { statusCode: 400 });
+  }
+  const basename = `profile_${crypto.randomUUID()}`;
+  const key = `profile-images/${owner}/${basename}`;
+  if (hasCloudinary()) {
+    const uploaded = await cloudinary.uploader.upload(
+      `data:image/webp;base64,${optimized.toString("base64")}`,
+      { folder: `profile-images/${owner}`, public_id: basename, resource_type: "image", type: "authenticated", format: "webp" },
+    );
+    if (uploaded.public_id !== key) throw new Error("Profile image storage returned an unexpected identity.");
+    return `profile:${key}`;
+  }
+  const directory = path.join(privateProofRoot, "profile-images", owner);
+  await fs.promises.mkdir(directory, { recursive: true, mode: 0o700 });
+  await fs.promises.chmod(privateProofRoot, 0o700);
+  await fs.promises.chmod(path.join(privateProofRoot, "profile-images"), 0o700);
+  await fs.promises.chmod(directory, 0o700);
+  await fs.promises.writeFile(path.join(directory, `${basename}.webp`), optimized, { flag: "wx", mode: 0o600 });
+  return `profile:${key}.webp`;
+}
+
+async function deliverPrivateProfileImage(reference, ownerId, res) {
+  const location = profileImageLocation(reference, ownerId);
+  if (!location) return false;
+  if (hasCloudinary()) {
+    try {
+      const expiresAt = Math.floor(Date.now() / 1000) + 60;
+      const signedUrl = cloudinary.utils.private_download_url(location.publicId, "webp", {
+        resource_type: "image", type: "authenticated", expires_at: expiresAt,
+      });
+      const url = trustedPrivateDownloadUrl(signedUrl, { publicId: location.publicId, expiresAt });
+      if (!url) return false;
+      const remote = await axios.get(url, { responseType: "stream", timeout: 15000,
+        maxContentLength: 10 * 1024 * 1024, maxRedirects: 0,
+        validateStatus: (status) => status === 200 });
+      res.set({ "Content-Type": "image/webp", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" });
+      remote.data.on("error", () => res.destroy());
+      remote.data.pipe(res);
+      return true;
+    } catch (_) { return false; }
+  }
+  return streamSafeFile(privateProofRoot, location.key, res);
+}
+
+async function deletePrivateProfileImage(reference, ownerId) {
+  const location = profileImageLocation(reference, ownerId);
+  if (!location) throw new Error("Invalid private profile image reference.");
+  if (hasCloudinary()) {
+    const result = await cloudinary.uploader.destroy(location.publicId, {
+      resource_type: "image", type: "authenticated", invalidate: true,
+    });
+    if (!result || !["ok", "not found"].includes(result.result)) {
+      throw new Error("Private profile image cleanup did not complete.");
+    }
+    return;
+  }
+  // The profile directory is private (0700), and the reference is constrained
+  // to the authenticated owner's generated UUID filename above.
+  const target = path.join(privateProofRoot, location.key);
+  if (!isPathWithin(privateProofRoot, target)) throw new Error("Invalid private profile image path.");
+  await fs.promises.unlink(target).catch((error) => { if (error.code !== "ENOENT") throw error; });
+}
+
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -782,6 +867,11 @@ const uploadPaymentProof = multer({
   limits: { fileSize: maxUploadSize },
   fileFilter: createFileFilter(),
 });
+const uploadProfileImage = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: maxUploadSize, files: 1, fields: 0, parts: 1 },
+  fileFilter: createFileFilter(),
+});
 
 module.exports = {
   uploadCategory,
@@ -789,6 +879,7 @@ module.exports = {
   uploadPosters,
   uploadBrand,
   uploadPaymentProof,
+  uploadProfileImage,
   uploadLimiter,
   cloudinary,
   hasCloudinary,
@@ -802,6 +893,10 @@ module.exports = {
   privateProofLocation,
   deliverPrivatePaymentProof,
   deletePrivatePaymentProof,
+  savePrivateProfileImage,
+  profileImageLocation,
+  deliverPrivateProfileImage,
+  deletePrivateProfileImage,
   privateProofRoot,
   localUploadRoot,
   inspectPaymentProofAsset,

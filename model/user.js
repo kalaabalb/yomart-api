@@ -16,6 +16,9 @@ const userSchema = new mongoose.Schema({
     unique: true,
     sparse: true,
   },
+  // Opaque private-storage reference. Never serialize this value to clients.
+  profileImageKey: { type: String, select: false },
+  profileImageAvailable: { type: Boolean, default: false },
   password: {
     type: String,
     required: true,

@@ -11,6 +11,14 @@ const Order = require("../model/order");
 const Rating = require("../model/rating");
 const PaymentProof = require("../model/paymentProof");
 const AdminUser = require("../model/adminUser");
+const {
+  uploadProfileImage,
+  uploadLimiter,
+  savePrivateProfileImage,
+  profileImageLocation,
+  deliverPrivateProfileImage,
+  deletePrivateProfileImage,
+} = require("../uploadFile");
 const { hasStrongPassword, passwordPolicyMessage } = require("../utils/passwordPolicy");
 const {
   issueUserToken,
@@ -31,6 +39,20 @@ const externalAccountDeletionLimiter = rateLimit({
     message: "Too many account deletion attempts. Please try again later.",
   },
 });
+
+function parseProfileImage(req, res, next) {
+  uploadProfileImage.single("image")(req, res, (error) => {
+    if (error) {
+      return res.status(error.statusCode || 400).json({
+        success: false,
+        message: error.code === "LIMIT_FILE_SIZE"
+          ? "Profile images must be 10 MB or smaller."
+          : error.message || "Choose a valid JPG, PNG, or WebP image.",
+      });
+    }
+    next();
+  });
+}
 
 async function deleteAccountData(user) {
   const userId = user._id;
@@ -280,6 +302,58 @@ router.put(
     });
   }),
 );
+
+router.post("/profile/image", requireUserAuth, uploadLimiter, parseProfileImage, asyncHandler(async (req, res) => {
+  if (!req.file) return res.status(400).json({ success: false, message: "Choose a profile image to upload." });
+  const user = await User.findById(req.authUser._id).select("+profileImageKey");
+  if (!user) return res.status(404).json({ success: false, message: "User not found." });
+  const previous = user.profileImageKey;
+  const next = await savePrivateProfileImage(req.file.buffer, user._id);
+  if (!profileImageLocation(next, user._id)) {
+    await deletePrivateProfileImage(next, user._id).catch(() => {});
+    return res.status(503).json({ success: false, message: "Profile image storage did not return a valid private reference." });
+  }
+  user.profileImageKey = next;
+  user.profileImageAvailable = true;
+  try {
+    await user.save();
+  } catch (error) {
+    await deletePrivateProfileImage(next, user._id).catch(() => {});
+    throw error;
+  }
+  if (previous && previous !== next) {
+    await deletePrivateProfileImage(previous, user._id).catch(() => {
+      // The old image is no longer addressable through the account; cleanup is best effort.
+      console.warn("Could not remove replaced private profile media.");
+    });
+  }
+  return res.json({ success: true, message: "Profile image updated.", data: toPublicUser(user) });
+}));
+
+router.get("/profile/image", requireUserAuth, asyncHandler(async (req, res) => {
+  const user = await User.findById(req.authUser._id).select("+profileImageKey");
+  if (!user || !user.profileImageKey || !profileImageLocation(user.profileImageKey, user._id)) {
+    return res.status(404).json({ success: false, message: "No profile image is available." });
+  }
+  const delivered = await deliverPrivateProfileImage(user.profileImageKey, user._id, res);
+  if (!delivered && !res.headersSent) return res.status(404).json({ success: false, message: "Profile image is unavailable." });
+  return undefined;
+}));
+
+router.delete("/profile/image", requireUserAuth, asyncHandler(async (req, res) => {
+  const user = await User.findById(req.authUser._id).select("+profileImageKey");
+  if (!user) return res.status(404).json({ success: false, message: "User not found." });
+  const previous = user.profileImageKey;
+  if (previous) {
+    user.profileImageKey = undefined;
+    user.profileImageAvailable = false;
+    await user.save();
+    await deletePrivateProfileImage(previous, user._id).catch(() => {
+      console.warn("Could not remove private profile media after account update.");
+    });
+  }
+  return res.json({ success: true, message: "Profile image removed.", data: toPublicUser(user) });
+}));
 
 // Get a user by ID
 router.get(

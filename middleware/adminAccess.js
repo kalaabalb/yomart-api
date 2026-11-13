@@ -81,6 +81,7 @@ const toPublicUser = (user) => ({
   phone: user.phone,
   emailVerified: user.emailVerified,
   phoneVerified: user.phoneVerified,
+  profileImageAvailable: user.profileImageAvailable === true,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });

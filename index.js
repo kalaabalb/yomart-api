@@ -123,6 +123,7 @@ app.use("/stories", require("./routes/story"));
 app.use("/collections", require("./routes/collection"));
 app.use("/store-settings", require("./routes/storeSettings"));
 app.use("/retailer-contacts", require("./routes/retailerContacts"));
+app.use("/support-content", require("./routes/supportContent"));
 app.use("/users", require("./routes/user"));
 app.use("/admin-users", require("./routes/adminUser"));
 app.use("/orders", require("./routes/order"));
